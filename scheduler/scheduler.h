@@ -9,6 +9,9 @@
 // // 13 60 45
 // // 11 50 50
 // // 6 20 15
+//lst 3 20 7
+// // 2 5 4
+// // 2 10 8
 
 #ifndef SCHEDULER_H
 #define SCHEDULER_H
@@ -19,6 +22,8 @@
 #include <algorithm>
 #include <vector>
 #include <string>
+#include <map>
+#include <iomanip>
 
 #define CHOICE      0
 #define CHOICE_RM   1
@@ -34,6 +39,8 @@ struct Task {
     int period;
     int WCET;
     int deadline;
+    int priority;
+
 };
 
 class Scheduler {
@@ -44,6 +51,7 @@ public:
     bool runEDFLSTTest();
     bool runPIPTest(); // Optional for now
     bool runOCPPICPPTest(); // Optional for now
+    void setPriority();
     void generateTimeline(); // Optional for now
 
 private:

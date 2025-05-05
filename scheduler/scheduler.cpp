@@ -1,4 +1,5 @@
 #include "scheduler.h"
+#include <climits>
 using namespace std;
 
 Scheduler::Scheduler(const vector<Task>& tasks, int choice)
@@ -18,6 +19,40 @@ int Scheduler::computeHyperperiod() const {
         h = lcm(h, task.period);
     }
     return h;
+}
+
+void Scheduler::setPriority() {
+    //set priority based on the deadline of the task
+    // RM: Higher priority for shorter periods
+    // DM: Higher priority for shorter deadlines
+    int shortest, prevShortest = 0;
+    int priority, shortestIndex = tasks_.size();
+    for (size_t i = 0; i < tasks_.size(); i++) {
+        shortest = computeHyperperiod();
+        for(size_t j = 0; j < tasks_.size(); j++){
+            if(tasks_[j].priority != 0)
+                continue;
+            if(tasks_[j].period < shortest && choice_ == CHOICE_RM){
+                shortest = tasks_[j].period;
+                shortestIndex = j;
+            }
+            else if(tasks_[j].deadline < shortest && choice_ == CHOICE_DM){
+                shortest = tasks_[j].deadline;
+                shortestIndex = j;
+            }
+        }
+        if(shortest != prevShortest){
+            tasks_[shortestIndex].priority = priority;
+            prevShortest = shortest;
+            priority--;
+        }
+        else{
+            cout << "Error: Task " << tasks_[shortestIndex].id << " has same priority as task " << tasks_[i].id << endl;
+        }
+    }
+    for(auto &task : tasks_){
+        cout << "Task " << task.id << " has priority " << task.priority << endl;
+    }
 }
 
 bool Scheduler::runRMDMTest() {
@@ -130,7 +165,71 @@ bool Scheduler::runOCPPICPPTest() {
 
 void Scheduler::generateTimeline() {
     // Optional timeline feature
-    cout << "Timeline generation not implemented.\n";
+    int hyperperiod = computeHyperperiod();
+    vector<int> remaining(tasks_.size(), 0);
+    vector<int> nextRelease(tasks_.size(), 0);
+    vector<int> nextDeadline(tasks_.size(), 0);
+
+    std::cout << "\nTimeline (0 to " << hyperperiod << "):\n";
+
+    for (int t = 0; t < hyperperiod; ++t) {
+        // Release tasks
+        for (size_t i = 0; i < tasks_.size(); ++i) {
+            if (t == nextRelease[i]) {
+                remaining[i] += tasks_[i].WCET;
+                nextDeadline[i] = tasks_[i].deadline + nextRelease[i];
+                nextRelease[i] += tasks_[i].period;
+            }
+        }
+        int runningTask = -1;
+        static int previousTask = -1;
+        int priority = 0;
+        int minDeadline = INT_MAX;
+        int minSlack = INT_MAX;
+        for(size_t i = 0; i < tasks_.size(); ++i) {
+            if(choice_ == CHOICE_RM || choice_ == CHOICE_DM){
+                if(remaining[i] > 0 && tasks_[i].priority > priority){
+                    priority = tasks_[i].priority;
+                    runningTask = i;
+                }
+            }
+            else if(choice_ == CHOICE_EDF){
+                if(remaining[i] > 0 && nextDeadline[i] < minDeadline){
+                    if(nextDeadline[i] < minDeadline){
+                        minDeadline = nextDeadline[i];
+                        runningTask = i;
+                    }
+                    else if(nextDeadline[i] == minDeadline){
+                        runningTask = previousTask;
+                    }  
+                }
+            }
+            else if(choice_ == CHOICE_LST){
+                int slack = (nextDeadline[i] - t) - remaining[i];
+                if(remaining[i] > 0){
+                    if(slack < minSlack){
+                        minSlack = slack;
+                        runningTask = i;
+                    }
+                    else if(slack == minSlack){
+                        runningTask = previousTask;
+                    }
+                }
+            }
+        }
+
+        // Print which task runs
+        if (runningTask != -1) {
+            std::cout << "|T" << tasks_[runningTask].id;
+            remaining[runningTask]--;
+            previousTask = runningTask;
+        } else {
+            std::cout << "|ID";
+        }
+    }
+    std::cout << "|\n";
+
+
 }
 
 int main() {
@@ -164,17 +263,29 @@ int main() {
     for (int i = 0; i < numTasks; ++i) {
         Task task;
         task.id = i + 1;
-        cout << "Enter WCET, period, deadline for Task " << task.id << ": ";
-        cin >> task.WCET >> task.period >> task.deadline;
+        if(choice == CHOICE_PIP || choice == CHOICE_OCPP || choice == CHOICE_ICPP) {
+            cout << "Enter WCET, period, deadline, priority for Task " << task.id << ": ";
+            cin >> task.WCET >> task.period >> task.deadline >> task.priority;
+        } else {
+            cout << "Enter WCET, period, deadline for Task " << task.id << ": ";
+            cin >> task.WCET >> task.period >> task.deadline;
+            task.priority = 0; // Default priority for non-resource sharing protocols
+        }
+      
         tasks.push_back(task);
     }
 
     Scheduler scheduler(tasks, choice);
 
     if (choice == CHOICE_RM || choice == CHOICE_DM) {
-        scheduler.runRMDMTest();
+        if(scheduler.runRMDMTest()== true){
+            scheduler.setPriority();
+            scheduler.generateTimeline();
+        }
     } else if (choice == CHOICE_EDF || choice == CHOICE_LST) {
-        scheduler.runEDFLSTTest();
+        if(scheduler.runEDFLSTTest()){
+            scheduler.generateTimeline();
+        }
     } else if (choice == CHOICE_PIP) {
         
     } else if (choice == CHOICE_OCPP || choice == CHOICE_ICPP) {
